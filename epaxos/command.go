@@ -64,10 +64,15 @@ func (p *epaxos) HasExecuted(e executableID) bool {
 // seqAndDepsForCommand determines the locally known maximum interfering sequence
 // number and dependencies for a given command.
 func (p *epaxos) seqAndDepsForCommand(
-	cmd *pb.Command, ignoredInstance pb.InstanceID,
+	cmd *pb.Command,
+	ignoredInstance pb.InstanceID,
 ) (pb.SeqNum, map[pb.InstanceID]struct{}) {
 	var maxSeq pb.SeqNum
 	deps := make(map[pb.InstanceID]struct{})
+
+	if added := p.bf.AddIfNotHas(cmd.Key); added {
+		return maxSeq, deps
+	}
 
 	for rID, cmds := range p.commands {
 		cmds.DescendLessOrEqual(cmds.Max(), func(i llrb.Item) bool {

@@ -72,6 +72,7 @@ func newTestingEPaxos() *epaxos {
 		},
 	}
 
+	p.bf.Add(inst01.is.InstanceData.Command.Key)
 	p.commands[0].ReplaceOrInsert(inst01)
 	p.commands[1].ReplaceOrInsert(inst11)
 	p.commands[2].ReplaceOrInsert(inst21)
@@ -213,9 +214,7 @@ func TestOnRequestDependencies(t *testing.T) {
 	newCmd.Key = pb.Key("c")
 	p.changeID(t, 1)
 	p.onRequest(newCmd)
-	expMaxDeps[1] = []pb.InstanceID{
-		pb.InstanceID{ReplicaID: 0, InstanceNum: 3},
-	}
+	expMaxDeps[1] = []pb.InstanceID{}
 	assertMaxDeps("added c")
 
 	// Crete a new command for replica 2 and verify the new max deps.

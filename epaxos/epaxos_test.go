@@ -60,9 +60,8 @@ func newNetwork(nodeCount int) network {
 	}
 	for _, r := range peersSlice {
 		peers[r] = newEPaxos(&Config{
-			ID:       r,
-			Nodes:    peersSlice,
-			RandSeed: int64(r),
+			ID:    r,
+			Nodes: peersSlice,
 		})
 	}
 	return network{
@@ -87,10 +86,9 @@ func (n *network) setInterceptor(f func(from pb.ReplicaID, msg pb.Message)) {
 func (n *network) restart(id pb.ReplicaID) {
 	p := n.peers[id]
 	n.peers[id] = newEPaxos(&Config{
-		ID:       p.id,
-		Nodes:    p.nodes,
-		Storage:  p.storage,
-		RandSeed: int64(id),
+		ID:      p.id,
+		Nodes:   p.nodes,
+		Storage: p.storage,
 	})
 }
 
