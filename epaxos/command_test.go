@@ -1,40 +1,56 @@
 package epaxos
 
 import (
+	"math/rand"
 	"reflect"
 	"testing"
 
 	pb "github.com/mjolk/epx2/epaxos/epaxospb"
 )
 
-// newTestingCommand
-func newTestingCommand(key string) *pb.Command {
+// newTestingCommand creates a writing *pb.Command with the provided start and
+// end keys.
+func newTestingCommand(start, end string) *pb.Command {
 	return &pb.Command{
-		Key:     pb.Key(key),
+		ID: rand.Uint64(),
+		Span: pb.Span{
+			Key:    pb.Key(start),
+			EndKey: pb.Key(end),
+		},
 		Writing: true,
 	}
 }
 
-func newTestingReadCommand(key string) *pb.Command {
-	cmd := newTestingCommand(key)
+func newTestingReadCommand(start, end string) *pb.Command {
+	cmd := newTestingCommand(start, end)
 	cmd.Writing = false
 	return cmd
 }
 
+// newTestingEPaxos creates a new epaxos state machine with the following
+// structure:
+//
+// id: 0
+// nodes: [0, 1 ,2]
+// commands: {
+//  0: [1: {{"a","z"}, 1}, 2: {{"a","m"}, 4}]
+//  1: [1: {{"a","z"}, 2}, 2: {{"n","z"}, 5}]
+//  2: [1: {{"a","b"}, 3}]
+// }
 func newTestingEPaxos() *epaxos {
 	c := Config{ID: 0, Nodes: []pb.ReplicaID{0, 1, 2}}
 	p := newEPaxos(&c)
 
 	inst01 := p.newInstance(0, 1)
 	inst01.is.InstanceData = pb.InstanceData{
-		Command: newTestingCommand("a"),
+		Command: newTestingCommand("a", "z"),
 		SeqNum:  1,
 		Deps:    []pb.InstanceID{},
 	}
 
 	inst11 := p.newInstance(1, 1)
 	inst11.is.InstanceData = pb.InstanceData{
-		Command: newTestingCommand("a"),
+		Command: newTestingCommand("a", "z"),
 		SeqNum:  2,
 		Deps: []pb.InstanceID{
 			pb.InstanceID{ReplicaID: 0, InstanceNum: 1},
@@ -43,7 +59,7 @@ func newTestingEPaxos() *epaxos {
 
 	inst21 := p.newInstance(2, 1)
 	inst21.is.InstanceData = pb.InstanceData{
-		Command: newTestingCommand("a"),
+		Command: newTestingCommand("a", "b"),
 		SeqNum:  3,
 		Deps: []pb.InstanceID{
 			pb.InstanceID{ReplicaID: 0, InstanceNum: 1},
@@ -53,7 +69,7 @@ func newTestingEPaxos() *epaxos {
 
 	inst02 := p.newInstance(0, 2)
 	inst02.is.InstanceData = pb.InstanceData{
-		Command: newTestingCommand("a"),
+		Command: newTestingCommand("a", "m"),
 		SeqNum:  4,
 		Deps: []pb.InstanceID{
 			pb.InstanceID{ReplicaID: 0, InstanceNum: 1},
@@ -64,7 +80,7 @@ func newTestingEPaxos() *epaxos {
 
 	inst12 := p.newInstance(1, 2)
 	inst12.is.InstanceData = pb.InstanceData{
-		Command: newTestingCommand("a"),
+		Command: newTestingCommand("n", "z"),
 		SeqNum:  5,
 		Deps: []pb.InstanceID{
 			pb.InstanceID{ReplicaID: 0, InstanceNum: 1},
@@ -72,7 +88,6 @@ func newTestingEPaxos() *epaxos {
 		},
 	}
 
-	p.bf.Add(inst01.is.InstanceData.Command.Key)
 	p.commands[0].ReplaceOrInsert(inst01)
 	p.commands[1].ReplaceOrInsert(inst11)
 	p.commands[2].ReplaceOrInsert(inst21)
@@ -110,7 +125,7 @@ func TestOnRequestIncrementInstanceNumber(t *testing.T) {
 	assertMaxInstanceNums()
 
 	// Crete a new command for replica 0 and verify the new max instance number.
-	newCmd := newTestingCommand("a")
+	newCmd := newTestingCommand("a", "z")
 	p.onRequest(newCmd)
 	expMaxInstanceNums[0] = 3
 	assertMaxInstanceNums()
@@ -147,7 +162,7 @@ func TestOnRequestIncrementSequenceNumber(t *testing.T) {
 	assertMaxSeqNums()
 
 	// Crete a new command for replica 0 and verify the new max seq number.
-	newCmd := newTestingCommand("a")
+	newCmd := newTestingCommand("a", "z")
 	p.onRequest(newCmd)
 	expMaxSeqNums[0] = 6
 	assertMaxSeqNums()
@@ -184,47 +199,45 @@ func TestOnRequestDependencies(t *testing.T) {
 			pb.InstanceID{ReplicaID: 1, InstanceNum: 1},
 		},
 	}
-	assertMaxDeps := func(run string) {
+	assertMaxDeps := func() {
 		for r, expDeps := range expMaxDeps {
 			if a, e := p.maxDeps(r), expDeps; !reflect.DeepEqual(a, e) {
-				t.Errorf(
-					"\n\nrun: %s\n expected max deps %+v for replica %v,\n found %+v",
-					run,
-					e,
-					r,
-					a,
-				)
+				t.Errorf("expected max deps %+v for replica %v, found %+v", e, r, a)
 			}
 		}
 	}
-
-	assertMaxDeps("current")
+	assertMaxDeps()
 
 	// Crete a new command for replica 0 and verify the new max deps.
-	newCmd := newTestingCommand("a")
+	newCmd := newTestingCommand("a", "z")
 	p.onRequest(newCmd)
 	expMaxDeps[0] = []pb.InstanceID{
+		pb.InstanceID{ReplicaID: 0, InstanceNum: 1},
 		pb.InstanceID{ReplicaID: 0, InstanceNum: 2},
+		pb.InstanceID{ReplicaID: 1, InstanceNum: 1},
 		pb.InstanceID{ReplicaID: 1, InstanceNum: 2},
 		pb.InstanceID{ReplicaID: 2, InstanceNum: 1},
 	}
-	assertMaxDeps("added a")
+	assertMaxDeps()
 
 	// Crete a new command for replica 1 and verify the new max deps.
-	newCmd.Key = pb.Key("c")
+	newCmd.Span.Key = pb.Key("c")
 	p.changeID(t, 1)
 	p.onRequest(newCmd)
-	expMaxDeps[1] = []pb.InstanceID{}
-	assertMaxDeps("added c")
+	expMaxDeps[1] = []pb.InstanceID{
+		pb.InstanceID{ReplicaID: 0, InstanceNum: 3},
+		pb.InstanceID{ReplicaID: 1, InstanceNum: 1},
+		pb.InstanceID{ReplicaID: 1, InstanceNum: 2},
+	}
+	assertMaxDeps()
 
 	// Crete a new command for replica 2 and verify the new max deps.
-	newCmd.Key = pb.Key("a")
+	newCmd.Span.EndKey = pb.Key("d")
 	p.changeID(t, 2)
 	p.onRequest(newCmd)
 	expMaxDeps[2] = []pb.InstanceID{
 		pb.InstanceID{ReplicaID: 0, InstanceNum: 3},
 		pb.InstanceID{ReplicaID: 1, InstanceNum: 3},
-		pb.InstanceID{ReplicaID: 2, InstanceNum: 1},
 	}
-	assertMaxDeps("added a")
+	assertMaxDeps()
 }

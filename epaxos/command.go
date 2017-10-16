@@ -1,7 +1,8 @@
 package epaxos
 
 import (
-	"github.com/petar/GoLLRB/llrb"
+	"github.com/cockroachdb/cockroach/pkg/util/interval"
+	"github.com/google/btree"
 
 	pb "github.com/mjolk/epx2/epaxos/epaxospb"
 )
@@ -64,37 +65,77 @@ func (p *epaxos) HasExecuted(e executableID) bool {
 // seqAndDepsForCommand determines the locally known maximum interfering sequence
 // number and dependencies for a given command.
 func (p *epaxos) seqAndDepsForCommand(
-	cmd *pb.Command,
-	ignoredInstance pb.InstanceID,
+	cmd *pb.Command, ignoredInstance pb.InstanceID,
 ) (pb.SeqNum, map[pb.InstanceID]struct{}) {
 	var maxSeq pb.SeqNum
 	deps := make(map[pb.InstanceID]struct{})
 
-	if added := p.bf.AddIfNotHas(cmd.Key); added {
-		return maxSeq, deps
-	}
-
+	cmdRage := rangeForCmd(cmd)
 	for rID, cmds := range p.commands {
-		cmds.DescendLessOrEqual(cmds.Max(), func(i llrb.Item) bool {
+		// Adding to the writeRG and readRG allows us to minimize the number of
+		// dependencies we add for this command without building a directed graph
+		// and topological sorting. This relies on the interference relation for
+		// commands ove a given key-range being transitive. It also relies on the
+		// causality of subsequent instances within the same replica instance space.
+		// The logic here is very similar to that in CockroachDB's Command Queue.
+		cmds.Descend(func(i btree.Item) bool {
 			inst := i.(*instance)
 			if inst.is.InstanceID == ignoredInstance {
 				return true
 			}
 
-			if otherCmd := inst.is.Command; otherCmd.Interferes(*cmd) {
-				maxSeq = pb.MaxSeqNum(maxSeq, inst.is.SeqNum)
-
+			addDep := func() {
 				dep := pb.InstanceID{
 					ReplicaID:   rID,
 					InstanceNum: inst.is.InstanceNum,
 				}
 				deps[dep] = struct{}{}
-				return false
+			}
+
+			if otherCmd := inst.is.Command; otherCmd.Interferes(*cmd) {
+				maxSeq = pb.MaxSeqNum(maxSeq, inst.is.SeqNum)
+
+				otherCmdRange := rangeForCmd(otherCmd)
+				if otherCmd.Writing {
+					// We add the other command's range to the RangeGroup and
+					// observe if it grows the group. If it does, that means
+					// that it is not a full transitive dependency of other
+					// dependencies of ours. If it is, that means that we do
+					// not need to depend on it because previous dependencies
+					// necessarily already have it as a dependency themself.
+					if p.rangeGroup.Add(otherCmdRange) {
+						addDep()
+						if p.rangeGroup.Len() == 1 && p.rangeGroup.Encloses(cmdRage) {
+							return false
+						}
+					}
+				} else {
+					// We check if the current RangeGroup overlaps the read
+					// dependency. Reads don't depend on reads, so this will
+					// only happen if a write was inserted that fully covers
+					// the read.
+					if !p.rangeGroup.Overlaps(otherCmdRange) {
+						addDep()
+					}
+				}
 			}
 			return true
 		})
+		p.rangeGroup.Clear()
 	}
 	return maxSeq, deps
+}
+
+func rangeForCmd(cmd *pb.Command) interval.Range {
+	startKey := cmd.Span.Key
+	endKey := cmd.Span.EndKey
+	if len(endKey) == 0 {
+		endKey = append(startKey, 0)
+	}
+	return interval.Range{
+		Start: interval.Comparable(startKey),
+		End:   interval.Comparable(endKey),
+	}
 }
 
 func (p *epaxos) onRequest(cmd *pb.Command) *instance {

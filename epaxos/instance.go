@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/google/btree"
+
 	pb "github.com/mjolk/epx2/epaxos/epaxospb"
-	"github.com/petar/GoLLRB/llrb"
 )
 
 type instance struct {
@@ -52,12 +53,12 @@ func (p *epaxos) newInstanceFromState(is *pb.InstanceState) *instance {
 //
 
 // Less implements the btree.Item interface.
-func (inst *instance) Less(than llrb.Item) bool {
+func (inst *instance) Less(than btree.Item) bool {
 	return inst.is.Less(&than.(*instance).is)
 }
 
 // instanceKey creates a key to index into the commands btree.
-func instanceKey(i pb.InstanceNum) llrb.Item {
+func instanceKey(i pb.InstanceNum) btree.Item {
 	return &instance{is: pb.InstanceState{InstanceID: pb.InstanceID{InstanceNum: i}}}
 }
 

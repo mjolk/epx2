@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net"
 
 	"golang.org/x/net/context"
@@ -83,7 +84,10 @@ func (ps *EPaxosServer) Read(
 	ctx context.Context, req *transpb.KVReadRequest,
 ) (*transpb.KVResult, error) {
 	cmd := epaxospb.Command{
-		Key:     epaxospb.Key(req.Key),
+		ID: rand.Uint64(),
+		Span: epaxospb.Span{
+			Key: epaxospb.Key(req.Key),
+		},
 		Writing: false,
 	}
 	ret := make(chan transpb.KVResult, 1)
@@ -106,7 +110,10 @@ func (ps *EPaxosServer) Write(
 	ctx context.Context, req *transpb.KVWriteRequest,
 ) (*transpb.KVResult, error) {
 	cmd := epaxospb.Command{
-		Key:     epaxospb.Key(req.Key),
+		ID: rand.Uint64(),
+		Span: epaxospb.Span{
+			Key: epaxospb.Key(req.Key),
+		},
 		Writing: true,
 		Data:    req.Value,
 	}

@@ -22,6 +22,10 @@
 
 
 [[constraint]]
+  name = "github.com/cockroachdb/cockroach"
+  version = "1.1.0"
+
+[[constraint]]
   name = "github.com/dgraph-io/badger"
   version = "0.8.0"
 
@@ -31,7 +35,7 @@
 
 [[constraint]]
   branch = "master"
-  name = "github.com/petar/GoLLRB"
+  name = "github.com/google/btree"
 
 [[constraint]]
   name = "github.com/pkg/errors"
@@ -47,4 +51,4 @@
 
 [[constraint]]
   name = "google.golang.org/grpc"
-  version = "1.6.0"
+  version = "1.7.0"

@@ -1,7 +1,7 @@
 package epaxos
 
 import (
-	"github.com/petar/GoLLRB/llrb"
+	"github.com/google/btree"
 
 	pb "github.com/mjolk/epx2/epaxos/epaxospb"
 )
@@ -24,17 +24,17 @@ type MemoryStorage struct {
 		set bool
 		hs  pb.HardState
 	}
-	instances map[pb.ReplicaID]*llrb.LLRB // *pb.InstanceState Items
+	instances map[pb.ReplicaID]*btree.BTree // *pb.InstanceState Items
 }
 
 // NewMemoryStorage returns a new in-memory implementation of Storage using
 // the provided Config.
 func NewMemoryStorage(c *Config) Storage {
 	s := &MemoryStorage{
-		instances: make(map[pb.ReplicaID]*llrb.LLRB, len(c.Nodes)),
+		instances: make(map[pb.ReplicaID]*btree.BTree, len(c.Nodes)),
 	}
 	for _, rep := range c.Nodes {
-		s.instances[rep] = llrb.New()
+		s.instances[rep] = btree.New(32 /* degree */)
 	}
 	return s
 }
@@ -53,7 +53,7 @@ func (ms *MemoryStorage) PersistHardState(hs pb.HardState) {
 	ms.hardState.set = true
 }
 
-func instanceStateKey(i pb.InstanceNum) llrb.Item {
+func instanceStateKey(i pb.InstanceNum) btree.Item {
 	return &pb.InstanceState{InstanceID: pb.InstanceID{InstanceNum: i}}
 }
 
@@ -61,7 +61,7 @@ func instanceStateKey(i pb.InstanceNum) llrb.Item {
 func (ms *MemoryStorage) Instances() []*pb.InstanceState {
 	var insts []*pb.InstanceState
 	for _, replInsts := range ms.instances {
-		replInsts.AscendGreaterOrEqual(replInsts.Min(), func(i llrb.Item) bool {
+		replInsts.Ascend(func(i btree.Item) bool {
 			insts = append(insts, i.(*pb.InstanceState))
 			return true
 		})

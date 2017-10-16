@@ -1,10 +1,10 @@
 package epaxospb
 
 import (
-	"github.com/petar/GoLLRB/llrb"
+	"github.com/google/btree"
 )
 
 // Less implements the btree.Item interface.
-func (ihs *InstanceState) Less(than llrb.Item) bool {
+func (ihs *InstanceState) Less(than btree.Item) bool {
 	return ihs.InstanceNum < than.(*InstanceState).InstanceNum
 }

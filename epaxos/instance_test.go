@@ -11,7 +11,7 @@ import (
 
 func (p *epaxos) assertOutbox(t *testing.T, outbox ...pb.Message) {
 	if a, e := p.msgs, outbox; !reflect.DeepEqual(a, e) {
-		t.Errorf("\nexpected outbox %+v\n, found %+v\n", e, a)
+		t.Errorf("expected outbox %+v, found %+v", e, a)
 	}
 }
 
@@ -20,7 +20,7 @@ func (p *epaxos) assertOutboxEmpty(t *testing.T) {
 }
 
 var (
-	testingCmd        = newTestingCommand("a")
+	testingCmd        = newTestingCommand("a", "z")
 	testingInstanceID = pb.InstanceID{
 		ReplicaID:   0,
 		InstanceNum: 3,
@@ -29,7 +29,9 @@ var (
 		Command: testingCmd,
 		SeqNum:  6,
 		Deps: []pb.InstanceID{
+			{ReplicaID: 0, InstanceNum: 1},
 			{ReplicaID: 0, InstanceNum: 2},
+			{ReplicaID: 1, InstanceNum: 1},
 			{ReplicaID: 1, InstanceNum: 2},
 			{ReplicaID: 2, InstanceNum: 1},
 		},
@@ -79,7 +81,7 @@ func TestOnPreAcceptWithNoNewInfo(t *testing.T) {
 			// number did not take this command into account.
 			inst03 := p.newInstance(0, 3)
 			inst03.is.InstanceData = pb.InstanceData{
-				Command: newTestingCommand("zz"),
+				Command: newTestingCommand("zz", "zzz"),
 				SeqNum:  6,
 				Deps:    []pb.InstanceID{},
 			}
@@ -124,7 +126,7 @@ func TestOnPreAcceptWithExtraInterferingCommand(t *testing.T) {
 	// number did not take this command into account.
 	inst03 := p.newInstance(0, 3)
 	inst03.is.InstanceData = pb.InstanceData{
-		Command: newTestingCommand("a"),
+		Command: newTestingCommand("a", "z"),
 		SeqNum:  6,
 		Deps:    []pb.InstanceID{},
 	}
@@ -184,7 +186,7 @@ func TestOnPreAcceptOK(t *testing.T) {
 	// Assert instance state.
 	newInst.assertState(pb.InstanceState_PreAccepted)
 	assertPreAcceptReplies(0)
-	assertDeps(3)
+	assertDeps(5)
 
 	// Send PreAcceptOK.
 	p.Step(pb.Message{
@@ -196,7 +198,7 @@ func TestOnPreAcceptOK(t *testing.T) {
 	// Assert instance state.
 	newInst.assertState(pb.InstanceState_Committed, pb.InstanceState_Executed)
 	assertPreAcceptReplies(1)
-	assertDeps(3)
+	assertDeps(5)
 
 	// Assert outbox.
 	msg := pb.Message{
@@ -226,7 +228,7 @@ func TestOnPreAcceptReply(t *testing.T) {
 	// Assert instance state.
 	newInst.assertState(pb.InstanceState_PreAccepted)
 	assertPreAcceptReplies(0)
-	assertDeps(3)
+	assertDeps(5)
 
 	// Send PreAcceptOK.
 	updatedDeps := append([]pb.InstanceID(nil), testingInstanceData.Deps...)
@@ -246,7 +248,7 @@ func TestOnPreAcceptReply(t *testing.T) {
 	// Assert instance state.
 	newInst.assertState(pb.InstanceState_Accepted)
 	assertPreAcceptReplies(1)
-	assertDeps(4)
+	assertDeps(6)
 
 	// Assert outbox.
 	instanceState := testingInstanceData

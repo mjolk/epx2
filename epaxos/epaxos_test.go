@@ -5,8 +5,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/btree"
+
 	pb "github.com/mjolk/epx2/epaxos/epaxospb"
-	"github.com/petar/GoLLRB/llrb"
 )
 
 func TestConfig(t *testing.T) {
@@ -60,8 +61,9 @@ func newNetwork(nodeCount int) network {
 	}
 	for _, r := range peersSlice {
 		peers[r] = newEPaxos(&Config{
-			ID:    r,
-			Nodes: peersSlice,
+			ID:       r,
+			Nodes:    peersSlice,
+			RandSeed: int64(r),
 		})
 	}
 	return network{
@@ -86,9 +88,10 @@ func (n *network) setInterceptor(f func(from pb.ReplicaID, msg pb.Message)) {
 func (n *network) restart(id pb.ReplicaID) {
 	p := n.peers[id]
 	n.peers[id] = newEPaxos(&Config{
-		ID:      p.id,
-		Nodes:   p.nodes,
-		Storage: p.storage,
+		ID:       p.id,
+		Nodes:    p.nodes,
+		Storage:  p.storage,
+		RandSeed: int64(id),
 	})
 }
 
@@ -249,7 +252,7 @@ func TestExecuteCommandsNoFailures(t *testing.T) {
 	n := newNetwork(5)
 
 	for _, peer := range n.peers {
-		cmd := newTestingCommand("a")
+		cmd := newTestingCommand("a", "z")
 		inst := peer.onRequest(cmd)
 
 		if !n.waitExecuteInstance(inst, true /* quorum */) {
@@ -267,7 +270,7 @@ func TestExecuteCommandsMinorityFailures(t *testing.T) {
 
 	for _, peer := range n.peers {
 		if n.alive(peer) {
-			cmd := newTestingCommand("a")
+			cmd := newTestingCommand("a", "z")
 			inst := peer.onRequest(cmd)
 
 			if !n.waitExecuteInstance(inst, true /* quorum */) {
@@ -285,7 +288,7 @@ func TestExecuteCommandsMajorityFailures(t *testing.T) {
 
 	for _, peer := range n.peers {
 		if n.alive(peer) {
-			cmd := newTestingCommand("a")
+			cmd := newTestingCommand("a", "z")
 			inst := peer.onRequest(cmd)
 
 			if n.waitExecuteInstance(inst, true /* quorum */) {
@@ -307,7 +310,7 @@ func TestExecuteCommandsOneRTTReads(t *testing.T) {
 
 	var insts []*instance
 	for _, peer := range n.peers {
-		cmd := newTestingReadCommand("a")
+		cmd := newTestingReadCommand("a", "z")
 		inst := peer.onRequest(cmd)
 		insts = append(insts, inst)
 	}
@@ -331,7 +334,7 @@ func TestExecuteCommandsOneRTTDifferentKeys(t *testing.T) {
 	var insts []*instance
 	const letters = "abcde"
 	for r, peer := range n.peers {
-		cmd := newTestingCommand(letters[int(r) : int(r)+1])
+		cmd := newTestingCommand(letters[int(r):int(r)+1], "")
 		inst := peer.onRequest(cmd)
 		insts = append(insts, inst)
 	}
@@ -355,7 +358,7 @@ func TestExecuteSerializableCommands(t *testing.T) {
 		if !(id == 0 || id == 1 || id == 2) {
 			continue
 		}
-		cmd := newTestingCommand("a")
+		cmd := newTestingCommand("a", "z")
 		inst := peer.onRequest(cmd)
 		insts = append(insts, inst)
 	}
@@ -384,7 +387,7 @@ func TestExecuteSerializableCommands(t *testing.T) {
 }
 
 func makeInstSpaceComaparable(
-	instSpace map[pb.ReplicaID]*llrb.LLRB,
+	instSpace map[pb.ReplicaID]*btree.BTree,
 ) map[pb.ReplicaID][]pb.InstanceState {
 	cmpInstSpace := make(map[pb.ReplicaID][]pb.InstanceState, len(instSpace))
 	for r, tree := range instSpace {
@@ -397,9 +400,9 @@ func makeInstSpaceComaparable(
 // containing pb.InstanceState elements. This is useful because two BTrees
 // with the same contents may not have the same physical structure, which
 // can throw off reflect.DeepEqual.
-func treeToSlice(tree *llrb.LLRB) []pb.InstanceState {
+func treeToSlice(tree *btree.BTree) []pb.InstanceState {
 	s := make([]pb.InstanceState, 0, tree.Len())
-	tree.AscendGreaterOrEqual(tree.Min(), func(i llrb.Item) bool {
+	tree.Ascend(func(i btree.Item) bool {
 		s = append(s, i.(*instance).is)
 		return true
 	})
@@ -413,7 +416,7 @@ func TestExecuteCommandsCrashAfterAccept(t *testing.T) {
 	n.crash(3)
 	n.crash(4)
 
-	cmd := newTestingCommand("a")
+	cmd := newTestingCommand("a", "z")
 	inst := n.peers[0].onRequest(cmd)
 
 	if !n.waitAcceptInstance(inst, true /* quorum */) {

@@ -27,6 +27,21 @@ type store struct {
 	kv *badger.KV
 }
 
+func getItemValue(item *badger.KVItem) ([]byte, error) {
+	var val []byte
+	if err := item.Value(func(v []byte) error {
+		if v == nil {
+			return nil
+		}
+		val = make([]byte, len(v))
+		copy(val, v)
+		return nil
+	}); err != nil {
+		return val, err
+	}
+	return val, nil
+}
+
 func newStore() *store {
 	opt := badger.DefaultOptions
 	dir, _ := ioutil.TempDir("/tmp", dirName)
@@ -34,18 +49,6 @@ func newStore() *store {
 	opt.ValueDir = dir
 	kv, _ := badger.NewKV(&opt)
 	return &store{kv: kv}
-}
-
-func getItemValue(item *badger.KVItem) (val []byte) {
-	item.Value(func(v []byte) error {
-		if v == nil {
-			return nil
-		}
-		val = make([]byte, len(v))
-		copy(val, v)
-		return nil
-	})
-	return val
 }
 
 func (s *store) Close() {
@@ -68,7 +71,7 @@ func (s *store) GetKey(key []byte) ([]byte, error) {
 	if err := s.kv.Get(encodeUserKey(key), &item); err != nil {
 		errors.Wrapf(err, "Error while getting key: %q", key)
 	}
-	return getItemValue(&item), nil
+	return getItemValue(&item)
 }
 
 // store implements the epaxos.Storage interface.
@@ -79,7 +82,10 @@ func (s *store) HardState() (hs epaxospb.HardState, found bool) {
 	if err := s.kv.Get(epaxosHS, &item); err != nil {
 		panic(err)
 	}
-	val := getItemValue(&item)
+	val, err := getItemValue(&item)
+	if err != nil {
+		return hs, false
+	}
 	if val == nil {
 		return hs, false
 	}
@@ -104,7 +110,7 @@ func (s *store) Instances() []*epaxospb.InstanceState {
 	itr := s.kv.NewIterator(opt)
 	for itr.Rewind(); itr.ValidForPrefix(epaxosInstancePrefix); itr.Next() {
 		item := itr.Item()
-		val := getItemValue(item)
+		val, _ := getItemValue(item)
 
 		inst := &epaxospb.InstanceState{}
 		if err := proto.Unmarshal(val, inst); err != nil {

@@ -8,6 +8,18 @@
   revision = "28f7e881ca57bc00e028f9ede9f0d9104cfeef5e"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/biogo/store"
+  packages = ["llrb"]
+  revision = "913427a1d5e89604e50ea1db0f28f34966d61602"
+
+[[projects]]
+  name = "github.com/cockroachdb/cockroach"
+  packages = ["pkg/util/interval"]
+  revision = "8b865035e21aa4fa526ee017ba9dc685d7af649c"
+  version = "v1.1.0"
+
+[[projects]]
   name = "github.com/dgraph-io/badger"
   packages = [".","options","protos","skl","table","y"]
   revision = "7f945c8fffd35e73f278fc3f0bce9961398dc1e1"
@@ -24,6 +36,12 @@
   name = "github.com/golang/protobuf"
   packages = ["proto","ptypes","ptypes/any","ptypes/duration","ptypes/timestamp"]
   revision = "130e6b02ab059e7b717a096f397c5b60111cae74"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/google/btree"
+  packages = ["."]
+  revision = "316fb6d3f031ae8f4d457c6c5186b9e3ded70435"
 
 [[projects]]
   branch = "master"
@@ -53,13 +71,13 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "ebfc5b4631820b793c9010c87fd8fef0f39eb082"
+  revision = "686000749eaec0b8855b8eef5336cf63899fe51d"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/text"
   packages = ["collate","collate/build","internal/colltab","internal/gen","internal/tag","internal/triegen","internal/ucd","language","secure/bidirule","transform","unicode/bidi","unicode/cldr","unicode/norm","unicode/rangetable"]
-  revision = "825fc78a2fd6fa0a5447e300189e3219e05e1f25"
+  revision = "c01e4764d870b77f8abe5096ee19ad20d80e8075"
 
 [[projects]]
   branch = "master"
@@ -69,13 +87,13 @@
 
 [[projects]]
   name = "google.golang.org/grpc"
-  packages = [".","codes","connectivity","credentials","grpclb/grpc_lb_v1/messages","grpclog","internal","keepalive","metadata","naming","peer","stats","status","tap","transport"]
-  revision = "f92cdcd7dcdc69e81b2d7b338479a19a8723cfa3"
-  version = "v1.6.0"
+  packages = [".","balancer","codes","connectivity","credentials","grpclb/grpc_lb_v1/messages","grpclog","internal","keepalive","metadata","naming","peer","resolver","stats","status","tap","transport"]
+  revision = "f7bf885db0b7479a537ec317c6e48ce53145f3db"
+  version = "v1.7.0"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b8ca531770671ab6dc0731bc130efa2d419ab47b76e0bd7bfa5e8114b0847bce"
+  inputs-digest = "1205c81dd25efe940811e5fea68f5a525555e4cd2c1dfe3d8bc607ae9bd73aae"
   solver-name = "gps-cdcl"
   solver-version = 1

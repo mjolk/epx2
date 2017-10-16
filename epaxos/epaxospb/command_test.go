@@ -35,11 +35,55 @@ func TestKeyCompare(t *testing.T) {
 	}
 }
 
+func TestSpanOverlaps(t *testing.T) {
+	sA := Span{Key: []byte("a")}
+	sD := Span{Key: []byte("d")}
+	sAtoC := Span{Key: []byte("a"), EndKey: []byte("c")}
+	sBtoD := Span{Key: []byte("b"), EndKey: []byte("d")}
+
+	testData := []struct {
+		s1, s2   Span
+		overlaps bool
+	}{
+		{sA, sA, true},
+		{sA, sD, false},
+		{sA, sBtoD, false},
+		{sBtoD, sA, false},
+		{sD, sBtoD, false},
+		{sBtoD, sD, false},
+		{sA, sAtoC, true},
+		{sAtoC, sA, true},
+		{sAtoC, sAtoC, true},
+		{sAtoC, sBtoD, true},
+		{sBtoD, sAtoC, true},
+	}
+	for i, test := range testData {
+		for _, swap := range []bool{false, true} {
+			s1, s2 := test.s1, test.s2
+			if swap {
+				s1, s2 = s2, s1
+			}
+			if o := s1.Overlaps(s2); o != test.overlaps {
+				t.Errorf("%d: expected overlap %t; got %t between %s vs. %s", i, test.overlaps, o, s1, s2)
+			}
+		}
+	}
+}
+
 func TestCommandInterferes(t *testing.T) {
-	rA := Command{Writing: false, Key: []byte("a")}
-	wA := Command{Writing: true, Key: []byte("a")}
-	rD := Command{Writing: false, Key: []byte("b")}
-	wD := Command{Writing: true, Key: []byte("b")}
+	sA := Span{Key: []byte("a")}
+	sD := Span{Key: []byte("d")}
+	sAtoC := Span{Key: []byte("a"), EndKey: []byte("c")}
+	sBtoD := Span{Key: []byte("b"), EndKey: []byte("d")}
+
+	rA := Command{Writing: false, Span: sA}
+	wA := Command{Writing: true, Span: sA}
+	rD := Command{Writing: false, Span: sD}
+	wD := Command{Writing: true, Span: sD}
+	rAtoC := Command{Writing: false, Span: sAtoC}
+	wAtoC := Command{Writing: true, Span: sAtoC}
+	rBtoD := Command{Writing: false, Span: sBtoD}
+	wBtoD := Command{Writing: true, Span: sBtoD}
 
 	testData := []struct {
 		c1, c2     Command
@@ -49,10 +93,18 @@ func TestCommandInterferes(t *testing.T) {
 		{rA, wA, true},
 		{rA, rD, false},
 		{rA, wD, false},
+		{rA, rBtoD, false},
+		{rA, wBtoD, false},
+		{rA, rAtoC, false},
+		{rA, wAtoC, true},
 		{wA, rA, true},
 		{wA, wA, true},
 		{wA, rD, false},
 		{wA, wD, false},
+		{wA, rBtoD, false},
+		{wA, wBtoD, false},
+		{wA, rAtoC, true},
+		{wA, wAtoC, true},
 	}
 	for i, test := range testData {
 		for _, swap := range []bool{false, true} {

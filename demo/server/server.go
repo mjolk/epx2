@@ -28,7 +28,7 @@ type server struct {
 	server          *transport.EPaxosServer
 	clients         map[epaxospb.ReplicaID]*transport.EPaxosClient
 	unavailClients  map[epaxospb.ReplicaID]struct{}
-	pendingRequests map[string]chan<- transpb.KVResult
+	pendingRequests map[uint64]chan<- transpb.KVResult
 
 	kv *store
 }
@@ -63,7 +63,7 @@ func newServer(ph parsedHostfile) (*server, error) {
 		server:          ps,
 		clients:         clients,
 		unavailClients:  make(map[epaxospb.ReplicaID]struct{}, len(ph.peerAddrs)),
-		pendingRequests: make(map[string]chan<- transpb.KVResult),
+		pendingRequests: make(map[uint64]chan<- transpb.KVResult),
 		kv:              kv,
 	}, nil
 }
@@ -106,12 +106,12 @@ func (s *server) Run() error {
 }
 
 func (s *server) registerClientRequest(req transport.Request) {
-	s.pendingRequests[string(req.Command.Key)] = req.ReturnC
+	s.pendingRequests[req.Command.ID] = req.ReturnC
 }
 
 func (s *server) handleExecutedCmds(committed []epaxospb.Command) {
 	for _, cmd := range committed {
-		ret, ok := s.pendingRequests[string(cmd.Key)]
+		ret, ok := s.pendingRequests[cmd.ID]
 
 		asLeader := ""
 		if ok {
@@ -122,7 +122,7 @@ func (s *server) handleExecutedCmds(committed []epaxospb.Command) {
 		res := s.executeCommand(cmd)
 
 		if ok {
-			delete(s.pendingRequests, string(cmd.Key))
+			delete(s.pendingRequests, cmd.ID)
 			ret <- res
 			close(ret)
 		}
@@ -130,19 +130,23 @@ func (s *server) handleExecutedCmds(committed []epaxospb.Command) {
 }
 
 func (s *server) executeCommand(cmd epaxospb.Command) transpb.KVResult {
+	if cmd.Span.EndKey != nil {
+		s.logger.Panicf("unexpected EndKey in command %+v", cmd)
+	}
+	key := cmd.Span.Key
 	var val []byte
 	if cmd.Writing {
 		val = cmd.Data
-		s.kv.SetKey(cmd.Key, val)
+		s.kv.SetKey(key, val)
 	} else {
 		var err error
-		val, err = s.kv.GetKey(cmd.Key)
+		val, err = s.kv.GetKey(key)
 		if err != nil {
 			s.logger.Panic(err)
 		}
 	}
 	return transpb.KVResult{
-		Key:   cmd.Key,
+		Key:   cmd.Span.Key,
 		Value: val,
 	}
 }

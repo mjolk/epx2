@@ -1,11 +1,13 @@
 package epaxos
 
 import (
-	"fmt"
+	"math/rand"
 	"reflect"
+	"time"
 
-	"github.com/AndreasBriese/bbloom"
-	"github.com/petar/GoLLRB/llrb"
+	"github.com/cockroachdb/cockroach/pkg/util/interval"
+	"github.com/google/btree"
+	"github.com/pkg/errors"
 
 	pb "github.com/mjolk/epx2/epaxos/epaxospb"
 )
@@ -23,24 +25,30 @@ type Config struct {
 	// Logger is the logger that the epaxos state machine will use
 	// to log events. If not set, a default logger will be used.
 	Logger Logger
+	// RandSeed allows the seed used by epaxos's rand.Source to be
+	// injected, to allow for fully deterministic execution.
+	RandSeed int64
 }
 
 func (c *Config) validate() error {
 	if !inReplicaSlice(c.ID, c.Nodes) {
-		return fmt.Errorf("ID not in Nodes slice")
+		return errors.Errorf("ID not in Nodes slice")
 	}
 	if c.Storage == nil {
 		c.Storage = NewMemoryStorage(c)
 	} else if hs, ok := c.Storage.HardState(); ok {
 		if hs.ReplicaID != c.ID {
-			return fmt.Errorf("ID different than in HardState")
+			return errors.Errorf("ID different than in HardState")
 		}
 		if !reflect.DeepEqual(hs.Nodes, c.Nodes) {
-			return fmt.Errorf("Node set different than in HardState")
+			return errors.Errorf("Node set different than in HardState")
 		}
 	}
 	if c.Logger == nil {
 		c.Logger = NewDefaultLogger()
+	}
+	if c.RandSeed == 0 {
+		c.RandSeed = time.Now().UnixNano()
 	}
 	return nil
 }
@@ -58,15 +66,16 @@ type epaxos struct {
 
 	// commands is a map from replica to an ordered tree of instance, indexed by
 	// sequence number. BTree contains *instance elements.
-	commands map[pb.ReplicaID]*llrb.LLRB
-	//bloom filter to speed up local command check
-	bf bbloom.Bloom
+	commands map[pb.ReplicaID]*btree.BTree
 	// TODO reintroduce instance space truncation.
 	// maxTruncatedInstanceNum is a mapping from replica to the maximum instance
 	// number that has been truncated up to in its command space.
 	// maxTruncatedInstanceNum map[pb.ReplicaID]pb.InstanceNum
 	// maxTruncatedSeqNum is the maximum sequence number that has been truncated.
 	// maxTruncatedSeqNum pb.SeqNum
+	// rangeGroup is used to minimize dependency lists by tracking transitive
+	// dependencies.
+	rangeGroup interval.RangeGroup
 
 	// executor holds execution state and handles the execution of committed
 	// instances.
@@ -85,8 +94,12 @@ type epaxos struct {
 	// executedCmds is the outbox for commands that are ready to be executed,
 	// in-order.
 	executedCmds []pb.Command
+
 	// logger is used by paxos to log event.
 	logger Logger
+	// rand holds the paxos instance's local Rand object. This allows us to avoid
+	// using the synchronized global Rand object.
+	rand *rand.Rand
 }
 
 func newEPaxos(c *Config) *epaxos {
@@ -94,16 +107,17 @@ func newEPaxos(c *Config) *epaxos {
 		panic(err.Error())
 	}
 	p := &epaxos{
-		id:       c.ID,
-		nodes:    c.Nodes,
-		logger:   c.Logger,
-		commands: make(map[pb.ReplicaID]*llrb.LLRB, len(c.Nodes)),
-		bf:       bbloom.New(float64(1<<16), float64(0.01)),
-		timers:   make(map[*tickingTimer]struct{}),
+		id:         c.ID,
+		nodes:      c.Nodes,
+		logger:     c.Logger,
+		commands:   make(map[pb.ReplicaID]*btree.BTree, len(c.Nodes)),
+		rangeGroup: interval.NewRangeTree(),
+		timers:     make(map[*tickingTimer]struct{}),
+		rand:       rand.New(rand.NewSource(c.RandSeed)),
 	}
 	p.executor = makeExecutor(p)
 	for _, rep := range c.Nodes {
-		p.commands[rep] = llrb.New()
+		p.commands[rep] = btree.New(32 /* degree */)
 	}
 	p.initStorage(c)
 	p.initTimers()
