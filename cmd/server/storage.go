@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	dirName = "epaxos-demo"
+	dirName = "epaxos-cmd"
 
 	nullByte             = byte(0x00)
 	userspacePrefix      = []byte("u")

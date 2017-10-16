@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
-	"github.com/mjolk/epx2/demo/util"
+	"github.com/mjolk/epx2/cmd/util"
 	"github.com/mjolk/epx2/transport"
 	transpb "github.com/mjolk/epx2/transport/transportpb"
 )

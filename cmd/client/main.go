@@ -13,7 +13,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
-	"github.com/mjolk/epx2/demo/util"
+	"github.com/mjolk/epx2/cmd/util"
 	transpb "github.com/mjolk/epx2/transport/transportpb"
 )
 
